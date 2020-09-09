@@ -28,114 +28,40 @@ slack_events_adapter = SlackEventAdapter(SLACK_SIGNING_SECRET, "/slack/events", 
 # Initialize a Web API client
 slack_web_client = WebClient(token=SLACK_BOT_ACCESS_TOKEN)
 
-
-#When a 'message' event is detected by the events adapter, forward that payload
-#to this function.
-
-attachmentMessage=[
-        {
-            "text": "Choose a game to play",
-            "fallback": "If you could read this message, you'd be choosing something fun to do right now.",
-            "color": "#3AA3E3",
-            "attachment_type": "default",
-            "callback_id": "game_selection",
-            "actions": [
-                {
-                    "name": "games_list",
-                    "text": "Pick a game...",
-                    "type": "select",
-                    "options": [
-                        {
-                            "text": "Hearts",
-                            "value": "hearts"
-                        },
-                        {
-                            "text": "Bridge",
-                            "value": "bridge"
-                        },
-                        {
-                            "text": "Checkers",
-                            "value": "checkers"
-                        
-                        },
-                        {
-                            "text": "Chess",
-                            "value": "chess"
-                        },
-                        {
-                            "text": "Poker",
-                            "value": "poker"
-                        },
-                        {
-                            "text": "Falken's Maze",
-                            "value": "maze"
-                        },
-                        {
-                            "text": "Global Thermonuclear War",
-                            "value": "war"
-                        }
-                    ]
-                }
-            ]
-        }
-    ]
-
-@app.route('/slack/event/change_language', methods=['POST'])
-def changelang():
-    print("In change lang funcv")
-    jsonres = {
-    "text": "Would you like to play a game?",
+#when the app starts, load the language_mappings.json file and create a json for /change_language command. Any changes to language list to just be done
+#in language_mappings.json file
+with open('language_mapping.json') as language:
+    language_mappings = json.load(language)
+# print("Type:", type(language_mappings))
+jsonres = {
+    "text": "Please choose your preferred language",
     "response_type": "in_channel",
     "attachments": [
         {
-            "text": "Choose a game to play",
-            "fallback": "If you could read this message, you'd be choosing something fun to do right now.",
+            "text": "Select a language",
+            "fallback": "If you could read this message, ",
             "color": "#3AA3E3",
             "attachment_type": "default",
-            "callback_id": "game_selection",
+            "callback_id": "language_selection",
             "actions": [
                 {
-                    "name": "games_list",
-                    "text": "Pick a game...",
+                    "name": "language_list",
+                    "text": "Select a language...",
                     "type": "select",
-                    "options": [
-                        {
-                            "text": "Hearts",
-                            "value": "hearts"
-                        },
-                        {
-                            "text": "Bridge",
-                            "value": "bridge"
-                        },
-                        {
-                            "text": "Checkers",
-                            "value": "checkers"
-                        
-                        },
-                        {
-                            "text": "Chess",
-                            "value": "chess"
-                        },
-                        {
-                            "text": "Poker",
-                            "value": "poker"
-                        },
-                        {
-                            "text": "Falken's Maze",
-                            "value": "maze"
-                        },
-                        {
-                            "text": "Global Thermonuclear War",
-                            "value": "war"
-                        }
-                    ]
+                    "options": []
                 }
             ]
         }
     ]
 }
+for(key) in language_mappings:
+    jsonres["attachments"][0]["actions"][0]["options"].append({"text":key, "value":language_mappings[key]})
 
 
+#endpoint for /change_language
+@app.route('/slack/event/change_language', methods=['POST'])
+def changelang():
+    print("In change lang funcv")
     return jsonify(jsonres)
 
 @slack_events_adapter.on("message")
@@ -159,7 +85,7 @@ def message(payload):
         try:
         # slack_web_client.chat_postEphemeral()
             response = slack_web_client.chat_postMessage(
-            attachments=attachmentMessage,
+            attachments=jsonres["attachments"],
             channel=channel_id,
             text="Hello Buddy"
             )
@@ -240,7 +166,5 @@ def teamJoined(payload):
     except SlackApiError as e:
         print("Failed to send message", exc_info=True)
     
-
-
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=3000, debug=True)
