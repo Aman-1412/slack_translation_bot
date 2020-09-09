@@ -136,7 +136,7 @@ def set_language():
     selected_language_text = get_language_from_iso_code(
         selected_language_iso_code)
     selection_success = {
-        "text": f"Thank You {user_name}. Your language has been set to {selected_language_text}"
+        "text": f"Thank You {user_name}. Your language has been set to {selected_language_text}. Please use /change_language to change it again."
     }
 
     return jsonify(selection_success)
