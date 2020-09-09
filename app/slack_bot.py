@@ -9,6 +9,7 @@ from pathlib import Path
 
 from flask import Flask
 from slack import WebClient
+from slack.errors import SlackApiError
 from slackeventsapi import SlackEventAdapter
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
@@ -73,11 +74,11 @@ def message(payload):
 
     try:
         # slack_web_client.chat_postEphemeral()
-        response = slack_web_client.chat_postMessage(
+        slack_web_client.chat_postMessage(
             channel=channel_id,
             text=f"{text} said by {user_id}"
         )
-    except SlackApiError as e:
+    except SlackApiError:
         logger.error("Failed to send message", exc_info=True)
 
 
