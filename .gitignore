@@ -1,4 +1,5 @@
 # Custom
+app/*.rdb
 *.rdb # Redis dump
 
 # Byte-compiled / optimized / DLL files
