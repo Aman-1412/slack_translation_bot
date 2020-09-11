@@ -1,6 +1,4 @@
-import app_logger
-import translate_api
-import redis_utils
+
 import os
 import time
 import json
@@ -17,6 +15,10 @@ from slack.errors import SlackApiError
 from slackeventsapi import SlackEventAdapter
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
+
+import app_logger
+import redis_utils
+import translate_api
 
 
 LOG_FILE = f'{Path(__file__).absolute().parent.parent}/logs/{Path(__file__).name}-file-{time.time()}.log'
@@ -51,8 +53,8 @@ except FileNotFoundError:
 # when the app starts, load the language_mappings.json file and create a json for /change_language command. Any changes to language list to just be done
 # in language_mappings.json file
 with open(f'{Path(__file__).parent}/language_mapping.json') as language:
-    language_mappings = json.load(language)
-# logger.info("Type:", type(language_mappings))
+    LANGUAGE_ISO_MAPPING = json.load(language)
+
 language_selecter = {
     "text": "Please choose your preferred language",
     "response_type": "ephemeral",
@@ -74,9 +76,9 @@ language_selecter = {
         }
     ]
 }
-for(key) in language_mappings:
+for(key) in LANGUAGE_ISO_MAPPING:
     language_selecter["attachments"][0]["actions"][0]["options"].append(
-        {"text": key, "value": language_mappings[key]})
+        {"text": key, "value": LANGUAGE_ISO_MAPPING[key]})
 
 
 def get_name_from_user_id(user_id):
@@ -87,13 +89,13 @@ def get_name_from_user_id(user_id):
         logger.debug("Name fetched successfully")
         return name
     except:
-        logger.error(f"Some error getting the name, response is {response_json}")
+        logger.error(
+            f"Some error getting the name, response is {response_json}")
         return user_id
-    
 
 
 def get_language_from_iso_code(iso_code):
-    for k, v in language_mappings.items():
+    for k, v in LANGUAGE_ISO_MAPPING.items():
         if v == iso_code:
             return k
 
@@ -112,48 +114,46 @@ def get_translated_message(text, source_language, target_language):
     return translated_text
 
 
-
 @app.route('/slack/event/change_language', methods=['POST'])
 def choose_language():
-    logger.info("In change lang funcv")
+    logger.debug("Sending the attachment to let user choose their language")
     return jsonify(language_selecter)
 
 
 @app.route('/slack/event/valueSelected', methods=['POST'])
 def set_language():
     global USER_LANGUAGE_MAPPINGS
-    payload = request.form.get('payload')
-    logger.info("Type of Payload " + str(type(payload)))
-    payload = json.loads(payload)
-    logger.info(payload)
+
+    payload = json.loads(request.form.get('payload'))
     channel_id = payload.get('channel').get('id')
-    logger.info('channel_id ' + channel_id)
     selected_language_iso_code = payload.get(
         'actions')[0].get('selected_options')[0].get('value')
-    logger.info("Selected Value is " + selected_language_iso_code)
-    userId = payload.get('user').get('id')
-    logger.info('userId ' + userId)
-    user_name = get_name_from_user_id(userId)
+    user_id = payload.get('user').get('id')
+    user_name = get_name_from_user_id(user_id)
+    selected_language_text = get_language_from_iso_code(
+        selected_language_iso_code)
+
     if not channel_id in USER_LANGUAGE_MAPPINGS:
         USER_LANGUAGE_MAPPINGS[channel_id] = {}
     USER_LANGUAGE_MAPPINGS[channel_id].update(
-        {userId: selected_language_iso_code})
+        {user_id: selected_language_iso_code})
     with open(f'{Path(__file__).parent}/user_language_mapping.json', 'w') as fp:
         json.dump(USER_LANGUAGE_MAPPINGS, fp, sort_keys=True, indent=4)
 
-    selected_language_text = get_language_from_iso_code(
-        selected_language_iso_code)
+    logger.info(
+        f"{user_name}'s language changed to {selected_language_text} in channel {channel_id}")
+
     selection_success = {
         "text": f"Thank You *{user_name}.* Your language has been set to *{selected_language_text}.* Please use */change_language* to change it again."
     }
 
     return jsonify(selection_success)
 
+
 def process_message(event, user_id, channel_id, text):
     global USER_LANGUAGE_MAPPINGS
     user_name = get_name_from_user_id(user_id)
-    if user_id == "U01AUR3FS2V" or text == 'Please choose your preferred language':
-        return
+    logger.info(f"Sender of the message is {user_name}")
 
     # When a new user joins
     if event.get("subtype") == 'channel_join':
@@ -176,38 +176,58 @@ def process_message(event, user_id, channel_id, text):
 
     if text:
         text = text.replace("'", "\\'")
-    source_language = translate_api.detect_language(GOOGLE_TRANSLATE_API_KEY, text)
-    logger.info(f"Detected language of the message is {source_language}")
+    source_language = translate_api.detect_language(
+        GOOGLE_TRANSLATE_API_KEY, text)
+    logger.info(
+        f"Detected language of the message is {get_language_from_iso_code(source_language)}")
 
     # When a message is posted, translate it for all the users in the channel
     for target_user_id, target_language in USER_LANGUAGE_MAPPINGS.get(channel_id).items():
-        logger.info(f'Target user_id is {target_user_id} and target language is {target_language} ')
         if target_user_id != user_id:
+            logger.info(
+            f'Target user_id is {target_user_id} and target language is {get_language_from_iso_code(target_language)} ')
             start = time.time()
             translated_text = get_translated_message(
                 text, source_language, target_language)
-            logger.info(f'Translated text in {target_language} is {translated_text}. Completed in {time.time()-start}')
+            logger.info(
+                f'Translated text in {get_language_from_iso_code(target_language)} is {translated_text}. Completed in {time.time()-start} seconds')
             try:
                 slack_web_client.chat_postEphemeral(
                     user=target_user_id,
-                    channel=channel_id, 
+                    channel=channel_id,
                     text=f"*{user_name}* :\n{translated_text} "
                 )
             except SlackApiError:
-                logger.info("Failed to send message", exc_info=True)
+                logger.error("Failed to send message", exc_info=True)
 
 
 @slack_events_adapter.on("message")
 def message(payload):
     global USER_LANGUAGE_MAPPINGS
-    logger.info("Some message was posted in the channel")
+    logger.debug("A message was posted in the channel")
 
     # Get the event data from the payload
     event = payload.get("event", {})
+    # Handle edited messages
+    if event.get("subtype",'') == 'message_changed':
+        logger.debug("It is an edited message")
+        # If the message was edited by bot. Return
+        if event.get("message",{}).get("subtype",'') == 'bot_message':
+            logger.debug("The message was edited by the bot! Doing nothing")
+            return
+        else:
+            text = event.get("message",{}).get("text")
+            user_id = event.get("message",{}).get("user")
+    else:
+        text = event.get("text")
+        user_id = event.get("user")
+
     channel_id = event.get("channel")
-    text = event.get("text")
-    user_id = event.get("user")
-    x = threading.Thread(target=process_message, args=(event, user_id, channel_id,text), daemon=True)
+    if user_id == "U01AUR3FS2V" or text == 'Please choose your preferred language':
+        logger.info("Beep Bop. I am a bot. Doing nothing")
+        return
+    x = threading.Thread(target=process_message, args=(
+        event, user_id, channel_id, text), daemon=True)
     x.start()
     return
 
