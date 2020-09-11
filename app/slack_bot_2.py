@@ -94,9 +94,7 @@ def get_language_from_iso_code(iso_code):
             return k
 
 
-def get_translated_message(text, target_language):
-    source_language = translate_api.detect_language(
-        GOOGLE_TRANSLATE_API_KEY, text)
+def get_translated_message(text, source_language, target_language):
     if source_language == target_language:
         return text
     # translated_text = redis_utils.get_translated_text(
@@ -177,13 +175,14 @@ def process_message(event, user_id, channel_id, text):
         except SlackApiError:
             logging.info("Failed to send message", exc_info=True)
     # ENDS HERE
-    
+    source_language = translate_api.detect_language(GOOGLE_TRANSLATE_API_KEY, text)
+
     # When a message is posted, translate it for all the users in the channel
     for target_user_id, target_language in USER_LANGUAGE_MAPPINGS.get(channel_id).items():
         logging.info(f'Target user_id is {target_user_id} and target language is {target_user_id} ')
         if target_user_id != user_id: 
             translated_text = get_translated_message(
-                text, target_language)
+                text, source_language, target_language)
             logger.info(f'*************************translated text is {translated_text}')
             try:
                 # slack_web_client.chat_postEphemeral()
