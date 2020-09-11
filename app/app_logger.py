@@ -5,7 +5,7 @@ def get_logger(LOG_FILE):
     logger.setLevel(logging.INFO)
 
     file_formatter = logging.Formatter('%(asctime)s - %(name)-12s - %(levelname)-8s - %(message)s')
-    file_handler = logging.FileHandler(LOG_FILE) 
+    file_handler = logging.FileHandler(LOG_FILE, encoding='utf-8') 
     file_handler.setFormatter(file_formatter) 
 
     stream_formatter = logging.Formatter('%(asctime)s - %(levelname)-8s - %(message)s') 

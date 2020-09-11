@@ -1,10 +1,12 @@
 import app_logger
 import translate_api
-import redis_utils
+#import redis_utils
 import os
 import time
 import json
 import logging
+import html
+import threading
 
 from pathlib import Path
 
@@ -78,9 +80,12 @@ for(key) in language_mappings:
 
 
 def get_name_from_user_id(user_id):
+    logging.info(f'Getting user name for {user_id}')
     URL = f'https://slack.com/api/users.info?token={SLACK_BOT_ACCESS_TOKEN}&user={user_id}'
     response_json = requests.get(URL).json()
+    logging.info(f'Request json is {response_json}')
     return response_json['user']['profile']['real_name_normalized'].title()
+
 
 
 def get_language_from_iso_code(iso_code):
@@ -94,13 +99,15 @@ def get_translated_message(text, target_language):
         GOOGLE_TRANSLATE_API_KEY, text)
     if source_language == target_language:
         return text
-    translated_text = redis_utils.get_translated_text(
-        text, source_language, target_language)
+    # translated_text = redis_utils.get_translated_text(
+    #     text, source_language, target_language)
+    translated_text=None
     if translated_text is None:
         translated_text = translate_api.translate(
             GOOGLE_TRANSLATE_API_KEY, text, source_language, target_language)
-        redis_utils.set_translated_text(
-            text, source_language, target_language, translated_text)
+        translated_text = html.unescape(translated_text)
+        # redis_utils.set_translated_text(
+        #     text, source_language, target_language, translated_text)
     return translated_text
 
 
@@ -141,22 +148,15 @@ def set_language():
 
     return jsonify(selection_success)
 
-
-@slack_events_adapter.on("message")
-def message(payload):
+def process_message(event, user_id, channel_id, text):
     global USER_LANGUAGE_MAPPINGS
-    logging.info("Some message was posted in the channel")
-
-    # Get the event data from the payload
-    event = payload.get("event", {})
-    channel_id = event.get("channel")
-    text = event.get("text")
-    user_id = event.get("user")
     user_name = get_name_from_user_id(user_id)
     # source_language = USER_LANGUAGE_MAPPINGS[channel_id].get(user_id, None)
     # TODO: update this condition when using the new bot
-    if user_id == "U019Y2Q1FUL" or text == 'Please choose your preferred language':
+    if user_id == "U01AUR3FS2V" or text == 'Please choose your preferred language':
         return
+    
+    text = text.replace("'", "\\'")
 
     # When a new user joins
     if event.get("subtype") == 'channel_join':
@@ -177,20 +177,40 @@ def message(payload):
         except SlackApiError:
             logging.info("Failed to send message", exc_info=True)
     # ENDS HERE
-
+    
     # When a message is posted, translate it for all the users in the channel
     for target_user_id, target_language in USER_LANGUAGE_MAPPINGS.get(channel_id).items():
-        translated_text = get_translated_message(
-            text, target_language)
-        try:
-            # slack_web_client.chat_postEphemeral()
-            slack_web_client.chat_postEphemeral(
-                user=target_user_id,
-                channel=channel_id,
-                text=f"{translated_text} said by {user_name}"
-            )
-        except SlackApiError:
-            logging.info("Failed to send message", exc_info=True)
+        logging.info(f'Target user_id is {target_user_id} and target language is {target_user_id} ')
+        if target_user_id != user_id: 
+            translated_text = get_translated_message(
+                text, target_language)
+            logger.info(f'*************************translated text is {translated_text}')
+            try:
+                # slack_web_client.chat_postEphemeral()
+                slack_web_client.chat_postEphemeral(
+                    user=target_user_id,
+                    channel=channel_id, 
+                    text=f"*{user_name}* :\n{translated_text} "
+                )
+            except SlackApiError:
+                logging.info("Failed to send message", exc_info=True)
+
+
+@slack_events_adapter.on("message")
+def message(payload):
+    global USER_LANGUAGE_MAPPINGS
+    logging.info("Some message was posted in the channel")
+
+    # Get the event data from the payload
+    event = payload.get("event", {})
+    channel_id = event.get("channel")
+    text = event.get("text")
+    user_id = event.get("user")
+    x = threading.Thread(target=process_message, args=(event, user_id, channel_id,text), daemon=True)
+    x.start()
+    return
+
+    
     # try:
     #     # slack_web_client.chat_postEphemeral()
     #     response = slack_web_client.chat_postMessage(
