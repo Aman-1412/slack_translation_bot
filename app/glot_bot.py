@@ -218,6 +218,15 @@ def message(payload):
         else:
             text = event.get("message",{}).get("text")
             user_id = event.get("message",{}).get("user")
+
+    elif event.get("subtype",'') == 'bot_add':
+        logger.debug("Bot was added to the channel")
+        return
+        
+    elif 'files' in event:
+        files = event.get("files")
+        audio_url = files.get("url_private_download")
+    
     else:
         text = event.get("text")
         user_id = event.get("user")
