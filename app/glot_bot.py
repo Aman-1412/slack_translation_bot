@@ -5,6 +5,7 @@ import json
 import logging
 import html
 import threading
+from datetime import datetime
 
 from pathlib import Path
 
@@ -19,6 +20,7 @@ load_dotenv(find_dotenv())
 import app_logger
 import redis_utils
 import translate_api
+import speech
 
 
 LOG_FILE = f'{Path(__file__).absolute().parent.parent}/logs/{Path(__file__).name}-file-{time.time()}.log'
@@ -113,6 +115,21 @@ def get_translated_message(text, source_language, target_language):
             text, source_language, target_language, translated_text)
     return translated_text
 
+def get_audio_file(url, user_id):
+    r = requests.get(url,
+    headers={
+        'Authorization': 'Bearer %s' %SLACK_BOT_ACCESS_TOKEN
+        })
+    logger.info(f"Input Url is {url}")
+    #file_name = f'{Path(__file__).absolute().parent}/input/audio_files/{user_id}-{time.time()}.mp3'
+    #file_name = f'{Path(__file__).absolute().parent.parent}/app/input/audio_files/' + user_id + (datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S')) + '.mp3'
+    file_name=f'{user_id}-{(datetime.utcnow().strftime("%Y-%m-%d-%H_%M_%S"))}.mp3'
+    file_data= r.content
+    with open(file_name, 'w+b') as f:
+        f.write(bytearray(file_data))
+        print("Saved " + file_name)
+    return file_name
+
 
 @app.route('/slack/event/change_language', methods=['POST'])
 def choose_language():
@@ -174,6 +191,15 @@ def process_message(event, user_id, channel_id, text):
             logger.info("Failed to send message", exc_info=True)
     # ENDS HERE
 
+    if 'files' in event:
+        files = event.get("files")
+        audio_url = files[0].get("url_private_download")
+        user_preffered_language = USER_LANGUAGE_MAPPINGS.get(channel_id).get(user_id)
+        file_name = get_audio_file(audio_url, user_id)
+        logger.info(f"file name of audio recieved is :{file_name}")
+        text = speech.speech_to_text(file_name, user_preffered_language)
+        logger.info(f"Text from audio {file_name} is :  {text}")
+
     if text:
         text = text.replace("'", "\\'")
     source_language = translate_api.detect_language(
@@ -185,7 +211,7 @@ def process_message(event, user_id, channel_id, text):
     for target_user_id, target_language in USER_LANGUAGE_MAPPINGS.get(channel_id).items():
         if target_user_id != user_id:
             logger.info(
-            f'Target user_id is {target_user_id} and target language is {get_language_from_iso_code(target_language)} ')
+            f'Target user is {user_name} and target language is {get_language_from_iso_code(target_language)} ')
             start = time.time()
             translated_text = get_translated_message(
                 text, source_language, target_language)
@@ -222,17 +248,7 @@ def message(payload):
     elif event.get("subtype",'') == 'bot_add':
         logger.debug("Bot was added to the channel")
         return
-
-    elif 'files' in event:
-        files = event.get("files")
-        audio_url = files.get("url_private_download")
-        # A thread that does processing here
-        # audio = download_audio(audio_url)
-        # transcribed_text = transcribe_audio(audio)
-        # translated_text = mega_translate(transcribed_text)
-        return
-
-    
+        
     else:
         text = event.get("text")
         user_id = event.get("user")
@@ -248,4 +264,4 @@ def message(payload):
 
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=3000)
+    app.run(host='0.0.0.0', port=3000, debug=True)
