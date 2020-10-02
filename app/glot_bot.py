@@ -209,7 +209,7 @@ def message(payload):
     # Get the event data from the payload
     event = payload.get("event", {})
     # Handle edited messages
-    if event.get("subtype",'') == 'message_changed':
+    if "subtype" in event and event.get("subtype",'') == 'message_changed':
         logger.debug("It is an edited message")
         # If the message was edited by bot. Return
         if event.get("message",{}).get("subtype",'') == 'bot_message':
@@ -222,10 +222,16 @@ def message(payload):
     elif event.get("subtype",'') == 'bot_add':
         logger.debug("Bot was added to the channel")
         return
-        
+
     elif 'files' in event:
         files = event.get("files")
         audio_url = files.get("url_private_download")
+        # A thread that does processing here
+        # audio = download_audio(audio_url)
+        # transcribed_text = transcribe_audio(audio)
+        # translated_text = mega_translate(transcribed_text)
+        return
+
     
     else:
         text = event.get("text")
