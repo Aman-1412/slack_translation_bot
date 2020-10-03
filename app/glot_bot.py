@@ -200,7 +200,6 @@ def process_message(event, user_id, channel_id, text):
 
     # When a new user joins
     if event.get("subtype") == 'channel_join':
-        logger.info(event.get("subtype"))
         if not channel_id in USER_LANGUAGE_MAPPINGS:
             USER_LANGUAGE_MAPPINGS[channel_id] = {}
         USER_LANGUAGE_MAPPINGS[channel_id].update({user_id: 'en'})
@@ -217,8 +216,8 @@ def process_message(event, user_id, channel_id, text):
             logger.info("Failed to send message", exc_info=True)
     # ENDS HERE
 
-    if 'attachments' in event and 'files' in event['attachments'][0]:
-        files = event['attachments'][0]["files"]
+    if 'files' in event:
+        files = event["files"]
         audio_url = files[0].get("url_private_download")
         user_preferred_language = USER_LANGUAGE_MAPPINGS.get(channel_id).get(user_id)
         file_name = get_audio_file(audio_url, user_id)
@@ -260,6 +259,8 @@ def message(payload):
 
     # Get the event data from the payload
     event = payload.get("event", {})
+    logger.debug(f"Message event received at {datetime.utcnow().strftime(r'%Y-%m-%dT%H:%M:%S')}")
+    logger.debug(event)
     # Handle edited messages
     if "subtype" in event and event.get("subtype",'') == 'message_changed':
         logger.debug("It is an edited message")

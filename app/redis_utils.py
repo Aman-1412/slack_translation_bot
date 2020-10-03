@@ -1,6 +1,8 @@
 import redis
 import hashlib
 
+from app_logger import logger
+
 r = redis.Redis(host='localhost', port=6379, db=0)
 
 
@@ -13,6 +15,7 @@ def hash_key(input_text, source_lang, target_lang):
 
 def set_translated_text(input_text, source_lang, target_lang, output_text):
     redis_key = hash_key(input_text, source_lang, target_lang)
+    logger.debug("Caching the message in redis")
     r.set(redis_key, output_text)
 
     # UNO REVERSE
@@ -24,6 +27,7 @@ def get_translated_text(input_text, source_lang, target_lang):
     redis_key = hash_key(input_text, source_lang, target_lang)
     value = r.get(redis_key)
     if value:
+        logger.debug("Found the message in redis cache")
         return value.decode()
     return None
 
