@@ -1,6 +1,7 @@
 # Custom
 app/*.rdb
 *.rdb # Redis dump
+input/ # Audio files
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

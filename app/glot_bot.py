@@ -17,13 +17,14 @@ from slackeventsapi import SlackEventAdapter
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 
-import app_logger
+# import app_logger
 import redis_utils
 import translate_api
 import speech
+from app_logger import logger
 
-
-LOG_FILE = f'{Path(__file__).absolute().parent.parent}/logs/{Path(__file__).name}-file-{time.time()}.log'
+# Unnecessary
+# LOG_FILE = f'{Path(__file__).absolute().parent.parent}/logs/{Path(__file__).name}-file-{time.time()}.log'
 
 # Create a .env file containing the following details
 SLACK_CLIENT_ID = os.environ['SLACK_CLIENT_ID']
@@ -32,9 +33,11 @@ SLACK_SIGNING_SECRET = os.environ['SLACK_SIGNING_SECRET']
 SLACK_BOT_ACCESS_TOKEN = os.environ['SLACK_BOT_ACCESS_TOKEN']
 GOOGLE_TRANSLATE_API_KEY = os.environ['GOOGLE_TRANSLATION_API_KEY']
 
+AUDIO_FILE_DIR = Path(__file__).resolve().parent.parent/"input"/ "audio_files"
 
-logger = app_logger.get_logger(LOG_FILE)
-logger.info("Vars loaded and loggers in place")
+
+# logger = app_logger.get_logger(LOG_FILE)
+# logger.info("Vars loaded and loggers in place")
 
 # Initialize a Flask app to host the events adapter
 app = Flask(__name__)
@@ -121,13 +124,14 @@ def get_audio_file(url, user_id):
         'Authorization': 'Bearer %s' %SLACK_BOT_ACCESS_TOKEN
         })
     logger.info(f"Input Url is {url}")
-    #file_name = f'{Path(__file__).absolute().parent}/input/audio_files/{user_id}-{time.time()}.mp3'
-    #file_name = f'{Path(__file__).absolute().parent.parent}/app/input/audio_files/' + user_id + (datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S')) + '.mp3'
-    file_name=f'{user_id}-{(datetime.utcnow().strftime("%Y-%m-%d-%H_%M_%S"))}.mp3'
+    AUDIO_FILE_DIR.mkdir(parents=True, exist_ok=True)
+    file_name = f"{AUDIO_FILE_DIR}/{user_id}-{(datetime.utcnow().strftime(r'%Y-%m-%d-%H_%M_%S'))}.mp3"
+    # file_name = f'{Path(__file__).absolute().parent.parent}/app/input/audio_files/' + user_id + (datetime.utcnow().strftime('%Y-%m-%d-%H_%M_%S')) + '.mp3'
+    # file_name=f'{user_id}-{(datetime.utcnow().strftime("%Y-%m-%d-%H_%M_%S"))}.mp3'
     file_data= r.content
     with open(file_name, 'w+b') as f:
         f.write(bytearray(file_data))
-        print("Saved " + file_name)
+        logger.info("Saved " + file_name)
     return file_name
 
 
@@ -135,6 +139,28 @@ def get_audio_file(url, user_id):
 def choose_language():
     logger.debug("Sending the attachment to let user choose their language")
     return jsonify(language_selecter)
+
+
+@app.route('/api/translate/text', methods= ['POST'])
+def translate_message_api():
+    start_time = time.time()
+    data = request.get_json()
+    logger.debug(f"Message received via the API: {data}")
+    # text = json.loads(request.form.get('text'))
+    # target_language = json.loads(request.form.get('target'))
+    text = data['text']
+    target_language = data['target']
+    if text:
+        text = text.replace("'", "\\'")
+    source_language = translate_api.detect_language(
+        GOOGLE_TRANSLATE_API_KEY, text)
+    logger.info(
+        f"Detected language of the message is {get_language_from_iso_code(source_language)}")
+    translated_text = get_translated_message(text, source_language, target_language)
+    end_time = time.time()
+    logger.info(f"Time taken to translate the message received via API: {end_time - start_time} seconds")
+    logger.info(f"Translated message is {translated_text}")
+    return translated_text
 
 
 @app.route('/slack/event/valueSelected', methods=['POST'])
@@ -191,13 +217,13 @@ def process_message(event, user_id, channel_id, text):
             logger.info("Failed to send message", exc_info=True)
     # ENDS HERE
 
-    if 'files' in event:
-        files = event.get("files")
+    if 'attachments' in event and 'files' in event['attachments'][0]:
+        files = event['attachments'][0]["files"]
         audio_url = files[0].get("url_private_download")
-        user_preffered_language = USER_LANGUAGE_MAPPINGS.get(channel_id).get(user_id)
+        user_preferred_language = USER_LANGUAGE_MAPPINGS.get(channel_id).get(user_id)
         file_name = get_audio_file(audio_url, user_id)
-        logger.info(f"file name of audio recieved is :{file_name}")
-        text = speech.speech_to_text(file_name, user_preffered_language)
+        logger.info(f"File name of audio received is :{file_name}")
+        text = speech.speech_to_text(file_name, user_preferred_language)
         logger.info(f"Text from audio {file_name} is :  {text}")
 
     if text:
